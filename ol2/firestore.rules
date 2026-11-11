@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signed() { return request.auth != null; }
+    function admin() { return signed() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    function hasProf() { return exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function prof() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function teacher() { return signed() && hasProf() && prof().role == 'oqituvchi'; }
+
+    match /meta/{id} {
+      allow read: if true;
+      allow create: if signed() && id == 'setup' && !exists(/databases/$(database)/documents/meta/setup);
+    }
+    match /admins/{id} {
+      allow read: if signed() && request.auth.uid == id;
+      allow create: if signed() && request.auth.uid == id && !exists(/databases/$(database)/documents/meta/setup);
+    }
+    match /users/{id} {
+      allow read: if signed() && (request.auth.uid == id || admin() || (teacher() && resource.data.group == prof().group));
+      allow create: if signed() && ((request.auth.uid == id && request.resource.data.role == 'oquvchi') || admin());
+      allow update: if signed() && ((request.auth.uid == id && request.resource.data.role == resource.data.role && request.resource.data.login == resource.data.login) || admin());
+      allow delete: if admin();
+    }
+    match /tests/{id} { allow read: if signed(); allow write: if admin(); }
+    match /groupTeachers/{id} { allow read: if signed(); allow write: if admin(); }
+    match /results/{id} {
+      allow read: if signed() && (admin() || resource.data.uid == request.auth.uid || (teacher() && resource.data.group == prof().group));
+      allow create: if signed() && request.resource.data.uid == request.auth.uid;
+      allow delete: if admin();
+    }
+  }
+}
